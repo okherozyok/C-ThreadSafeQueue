@@ -21,12 +21,14 @@ public:
 	bool empty() const;
 	size_t size() const;
 	void clear();
+	void close();
 private:
 	mutable std::mutex mutex_; // 互斥量必须是可变的
 	int maxSize;
 	std::queue<std::shared_ptr<const T>> queue_;
 	std::condition_variable conditionVar;
 	void unsafeClear();
+	bool closed = false;
 };
 
 template<typename T>
@@ -37,9 +39,6 @@ ThreadSafeQueue<T>::ThreadSafeQueue(int maxSize) :maxSize(maxSize)
 template<typename T>
 ThreadSafeQueue<T>::~ThreadSafeQueue()
 {
-	std::lock_guard<std::mutex> lock(mutex_);
-	unsafeClear();
-	conditionVar.notify_all();
 }
 
 template<typename T>
@@ -64,7 +63,11 @@ template<typename T>
 std::shared_ptr<const T> ThreadSafeQueue<T>::pop()
 {
 	std::unique_lock<std::mutex> lock(mutex_);
-	conditionVar.wait(lock, [this] {return !queue_.empty(); });
+	conditionVar.wait(lock, [this] {return (!queue_.empty()) || closed; });
+	if (closed)
+	{
+		return nullptr;
+	}
 
 	std::shared_ptr<const T> popValue = std::move(queue_.front());
 	//std::cout << "front后 " << popValue.use_count() << std::endl;
@@ -90,6 +93,15 @@ void ThreadSafeQueue<T>::clear()
 {
 	std::lock_guard<std::mutex> lock(mutex_);
 	unsafeClear();
+}
+
+template<typename T>
+void ThreadSafeQueue<T>::close()
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	unsafeClear();
+	closed = true;
+	conditionVar.notify_all();
 }
 
 template<typename T>

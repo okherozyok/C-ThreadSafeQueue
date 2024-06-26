@@ -75,7 +75,7 @@ void batchTest()
 	}
 }
 
-void DeconstructionTest()
+void SharePtrDeconstructionTest()
 {
 	shared_ptr<Message> sp = make_shared<Message>(10);
 	cout << "转移前sp " << sp.use_count() << endl;
@@ -98,13 +98,36 @@ void DeconstructionTest()
 	cout << "队列大小 " << safeQ.size();
 }
 
+void ConstructDeconstructTest()
+{
+	ThreadSafeQueue<Message>* safeQueue = new ThreadSafeQueue<Message>(10);
+
+	thread t1([safeQueue]()
+		{
+			safeQueue->pop();
+		});
+
+	thread t2([safeQueue]()
+		{
+			this_thread::sleep_for(chrono::seconds(1));
+			safeQueue->close();
+		});
+
+	t1.join();
+	t2.join();
+
+	delete safeQueue;
+	cout << "结束" << endl;
+}
+
 int main()
 {
-	DeconstructionTest();
+	batchTest();
+	//ConstructDeconstructTest();
 
-	cout << 1;
 	return 0;
 }
+
 
 // 运行程序: Ctrl + F5 或调试 >“开始执行(不调试)”菜单
 // 调试程序: F5 或调试 >“开始调试”菜单
