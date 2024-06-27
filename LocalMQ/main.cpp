@@ -10,79 +10,85 @@ using namespace std;
 
 void createQueueTest()
 {
-    LocalMQ<int> mq;
-    vector<thread> runThreads;
-    for (int i = 0; i < 10; i++)
-    {
-        runThreads.emplace_back([&mq]()
-            {
-                localQueueHandle_uint queueId = mq.registerListen(100, 10);
-                cout << static_cast<int>(queueId) << endl;
-            }
-        );
-    }
+	LocalMQ<int> mq;
+	vector<thread> runThreads;
+	for (int i = 0; i < 10; i++)
+	{
+		runThreads.emplace_back([&mq]()
+			{
+				localQueueHandle_uint queueId = mq.registerListen(100, 10);
+				cout << static_cast<int>(queueId) << endl;
+			}
+		);
+	}
 
-    for (auto& thread : runThreads) {
-        thread.join(); // 阻塞当前线程，直到thread线程执行完毕
-    }
+	for (auto& thread : runThreads) {
+		thread.join(); // 阻塞当前线程，直到thread线程执行完毕
+	}
 }
 
 void pubsubTest()
 {
-    struct Message
-    {
-        int i;
-        Message(int value) :i(value)
-        {
+	struct Message
+	{
+		int i;
+		Message(int value) :i(value)
+		{
 
-        }
+		}
 
-        ~Message()
-        {
-            cout << "Message 释放了" << endl;
-        }
-    };
+		~Message()
+		{
+			cout << "Message 释放了" << endl;
+		}
+	};
 
-    LocalMQ<Message> mq;
-    localMessageType_uint msgType = 100;
-    localQueueHandle_uint queueId = mq.registerListen(msgType, 10);
-    localQueueHandle_uint queueId2 = mq.registerListen(msgType, 10);
-    cout << "监听队列 " <<  static_cast<int>(queueId) << endl;
+	LocalMQ<Message> mq;
+	localMessageType_uint msgType = 100;
 
-    thread publish([&mq, msgType]()
-        {
-            this_thread::sleep_for(chrono::seconds(1));
-            shared_ptr<Message> value = make_shared<Message>(9999);
-            mq.publish(msgType, value);
-        }
-    );
+	int subcribers = 10;
 
-    thread subcribe([&mq, queueId]()
-        {
-            shared_ptr<const Message> value = mq.subscribe(queueId);
-            cout << "取到消息 " << value->i << endl;
-        }
-    );
+	vector< localQueueHandle_uint> subscribeQueues;
+	for (int i = 0; i < subcribers; i++)
+	{
+		localQueueHandle_uint queueHandle = mq.registerListen(msgType, 10);
+		subscribeQueues.emplace_back(queueHandle);
+	}
 
-    thread subcribe2([&mq, queueId2]()
-        {
-            shared_ptr<const Message> value = mq.subscribe(queueId2);
-            cout << "2取到消息 " << value->i << endl;
-        }
-    );
+	thread publish([&mq, msgType]()
+		{
+			this_thread::sleep_for(chrono::seconds(1));
+			shared_ptr<Message> value = make_shared<Message>(9999);
+			mq.publish(msgType, value);
+		}
+	);
 
-    subcribe.join();
-    subcribe2.join();
-    publish.join();
-    
-    cout << "pubsub结束" << endl;
+	vector<thread> queueThreads;
+	mutex mutex_;
+	for (localQueueHandle_uint queueHandle : subscribeQueues)
+	{
+		queueThreads.emplace_back([&mq, queueHandle, &mutex_]()
+			{
+				shared_ptr<const Message> value = mq.subscribe(queueHandle);
+				lock_guard<mutex> lock(mutex_);
+				cout << queueHandle << "取到消息 " << value->i << endl;
+			});
+	}
+
+	for (auto& queueThread : queueThreads)
+	{
+		queueThread.join();
+	}
+	publish.join();
+
+	cout << "pubsub结束" << endl;
 }
 
 int main()
 {
-    //createQueueTest();
-    pubsubTest();
-    
+	//createQueueTest();
+	pubsubTest();
+
 }
 
 // 运行程序: Ctrl + F5 或调试 >“开始执行(不调试)”菜单
