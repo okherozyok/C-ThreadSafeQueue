@@ -49,6 +49,7 @@ localQueueHandle_uint LocalMQ<T>::registerListen(localMessageType_uint messageTy
 	using namespace std;
 	unique_lock<shared_mutex> wlock(rw_mutex);
 
+	// TODO 队列id超限检查
 	localQueueHandle_uint toBeReturned = queueId;
 	shared_ptr<ThreadSafeQueue<T>> safeQueue = make_shared<ThreadSafeQueue<T>>(size);
 	queueMap[toBeReturned] = move(safeQueue);
