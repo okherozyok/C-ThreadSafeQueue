@@ -1,27 +1,18 @@
+/*
+多订阅，为每一个监听消息的使用端创建一个队列，防止使用端消费消息发生阻塞时影响其它使用端。
+*/
+
 #pragma once
 
 #include <map>
 #include <set>
 #include <mutex>
+#include <shared_mutex>
 #include "ThreadSafeQueue.h"
+//#include <iostream>
 
-class LocalMQ_MessageKey
-{
-public:
-	LocalMQ_MessageKey(uint8_t messageId, uint8_t queueId) : messageId(messageId), queueId(queueId) {}
-
-	// 重载小于运算符，用于map的排序
-	bool operator<(const LocalMQ_MessageKey& other) const {
-		// 首先比较first，如果相等则比较second
-		if (messageId != other.messageId) {
-			return messageId < other.messageId;
-		}
-		return queueId < other.queueId;
-	}
-private:
-	uint8_t messageId;
-	uint16_t queueId;
-};
+using localMessageType_uint = uint8_t;
+using localQueueHandle_uint = uint16_t;
 
 template<typename T>
 class LocalMQ
@@ -32,13 +23,15 @@ public:
 	LocalMQ& operator=(const LocalMQ&) = delete;
 	~LocalMQ();
 
-	uint16_t subscribeMessage(uint8_t messageId, int size = 10);
+	localQueueHandle_uint registerListen(localMessageType_uint messageType, int size = 10);
+	void publish(localMessageType_uint messageType, std::shared_ptr<const T>);
+	std::shared_ptr<const T> subscribe(localQueueHandle_uint queueHandle);
 
 private:
-	std::mutex mutex_;
-	// TODO map size
-	std::map<LocalMQ_MessageKey, std::unique_ptr<ThreadSafeQueue<T>>> messageMap;
-	uint8_t queueId = 0;
+	std::shared_mutex  rw_mutex;
+	localQueueHandle_uint queueId = 0;
+	std::map<localQueueHandle_uint, std::shared_ptr<ThreadSafeQueue<T>>> queueMap;
+	std::map<localMessageType_uint, std::vector<localQueueHandle_uint>> messageTypeMap;
 };
 
 template<typename T>
@@ -51,17 +44,52 @@ LocalMQ<T>::~LocalMQ()
 }
 
 template<typename T>
-uint16_t LocalMQ<T>::subscribeMessage(uint8_t messageId, int size)
+localQueueHandle_uint LocalMQ<T>::registerListen(localMessageType_uint messageType, int size)
 {
 	using namespace std;
-	lock_guard<mutex> lock(mutex_);
-	uint16_t toBeReturned = queueId;
+	unique_lock<shared_mutex> wlock(rw_mutex);
 
-	LocalMQ_MessageKey msgKey(messageId, queueId);
-	unique_ptr<ThreadSafeQueue<T>> safeQueue = make_unique<ThreadSafeQueue<T>>(size);
-	messageMap[msgKey] = move(safeQueue);
+	localQueueHandle_uint toBeReturned = queueId;
+	shared_ptr<ThreadSafeQueue<T>> safeQueue = make_shared<ThreadSafeQueue<T>>(size);
+	queueMap[toBeReturned] = move(safeQueue);
+	messageTypeMap[messageType].push_back(toBeReturned);
 
 	queueId++;
 
 	return toBeReturned;
 }
+
+template<typename T>
+void LocalMQ<T>::publish(localMessageType_uint messageType, std::shared_ptr<const T> sharedMessage)
+{
+	using namespace std;
+	shared_lock<shared_mutex> rlock(rw_mutex);
+
+	if (messageTypeMap.find(messageType) == messageTypeMap.end())
+	{
+		return;
+	}
+
+	vector<localQueueHandle_uint> queues = messageTypeMap[messageType];
+	for (localQueueHandle_uint queueHandle : queues)
+	{
+		shared_ptr<ThreadSafeQueue<T>> safeQueue = queueMap[queueHandle];
+		safeQueue->push(sharedMessage);
+	}
+}
+
+template<typename T>
+std::shared_ptr<const T> LocalMQ<T>::subscribe(localQueueHandle_uint queueHandle)
+{
+	using namespace std;
+	shared_lock<shared_mutex> rlock(rw_mutex);
+
+	if (queueMap.find(queueHandle) == queueMap.end())
+	{
+		return nullptr;
+	}
+	shared_ptr<ThreadSafeQueue<T>> safeQueue = queueMap[queueHandle];
+	return  safeQueue->pop();
+}
+
+
