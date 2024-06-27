@@ -24,35 +24,6 @@ public:
 const int num_threads = 10; // 定义要创建的线程数量
 ThreadSafeQueue<Message> safeQ(10);
 
-// 定义线程执行的函数
-void thread_push(int id) {
-	shared_ptr<Message> sp = make_shared<Message>(id);
-	shared_ptr<const Message> csp = sp;
-	bool pushed = false;
-
-	this_thread::sleep_for(chrono::milliseconds(10));
-	pushed = safeQ.push(csp);
-
-	if (!pushed)
-	{
-		cout << "pushed fail" << endl;
-	}
-}
-void thread_pop(int id) {
-	while (1)
-	{
-		if (id % 2 == 0)
-		{
-			this_thread::sleep_for(chrono::milliseconds(30));
-		}
-		else {
-			this_thread::sleep_for(chrono::milliseconds(100));
-		}
-		std::shared_ptr<const Message> poppedSp = safeQ.pop();
-		cout << poppedSp->data << endl;
-	}
-}
-
 void batchTest()
 {
 	std::vector<std::thread> pushThreads;
@@ -60,10 +31,37 @@ void batchTest()
 
 	// 创建多个线程
 	for (int i = 0; i < num_threads; i++) {
-		pushThreads.emplace_back(thread_push, i); // 使用emplace_back直接在vector中构造thread对象
+		pushThreads.emplace_back([i]() 
+			{
+				shared_ptr<Message> sp = make_shared<Message>(i);
+				shared_ptr<const Message> csp = sp;
+				bool pushed = false;
+
+				this_thread::sleep_for(chrono::milliseconds(10));
+				pushed = safeQ.push(csp);
+
+				if (!pushed)
+				{
+					cout << "pushed fail" << endl;
+				}
+			}); // 使用emplace_back直接在vector中构造thread对象
 	}
 	for (int i = 0; i < 1; i++) {
-		popFrontThreads.emplace_back(thread_pop, i); // 使用emplace_back直接在vector中构造thread对象
+		popFrontThreads.emplace_back([i]() 
+			{
+				for(int j=0; j< num_threads; j++)
+				{
+					if (i % 2 == 0)
+					{
+						this_thread::sleep_for(chrono::milliseconds(30));
+					}
+					else {
+						this_thread::sleep_for(chrono::milliseconds(100));
+					}
+					std::shared_ptr<const Message> poppedSp = safeQ.pop();
+					cout << poppedSp->data << endl;
+				}
+			}); // 使用emplace_back直接在vector中构造thread对象
 	}
 
 	// 等待所有线程完成
