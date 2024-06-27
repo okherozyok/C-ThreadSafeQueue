@@ -10,7 +10,7 @@ template<typename T>
 class ThreadSafeQueue
 {
 public:
-	ThreadSafeQueue(int maxSize);
+	explicit ThreadSafeQueue(int maxSize);
 	ThreadSafeQueue(ThreadSafeQueue const&) = delete;
 	ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
 	~ThreadSafeQueue();
