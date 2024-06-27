@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 #include "ThreadSafeQueue.h"
+#include "CommonQueueTest.h"
 
 using namespace std;
 
@@ -31,14 +32,13 @@ void batchTest()
 
 	// 创建多个线程
 	for (int i = 0; i < num_threads; i++) {
-		pushThreads.emplace_back([i]() 
+		pushThreads.emplace_back([i]()
 			{
 				shared_ptr<Message> sp = make_shared<Message>(i);
-				shared_ptr<const Message> csp = sp;
 				bool pushed = false;
 
 				this_thread::sleep_for(chrono::milliseconds(10));
-				pushed = safeQ.push(csp);
+				pushed = safeQ.push(sp);
 
 				if (!pushed)
 				{
@@ -47,9 +47,9 @@ void batchTest()
 			}); // 使用emplace_back直接在vector中构造thread对象
 	}
 	for (int i = 0; i < 1; i++) {
-		popFrontThreads.emplace_back([i]() 
+		popFrontThreads.emplace_back([i]()
 			{
-				for(int j=0; j< num_threads; j++)
+				for (int j = 0; j < num_threads; j++)
 				{
 					if (i % 2 == 0)
 					{
@@ -73,18 +73,15 @@ void batchTest()
 	}
 }
 
-void SharePtrDeconstructionTest()
+void sharePtrDeconstructionTest()
 {
-	shared_ptr<Message> sp = make_shared<Message>(10);
-	cout << "转移前sp " << sp.use_count() << endl;
 	{
-		shared_ptr<const Message> csp = move(sp);
+		shared_ptr<Message> csp = make_shared<Message>(10);
 		cout << "初始构造csp " << csp.use_count() << endl;
 		safeQ.push(csp);
 		//td.push(move(csp));
 		cout << "析构前的csp " << csp.use_count() << endl;
 	}
-	cout << "转移后sp " << sp.use_count() << endl;
 
 	{
 		shared_ptr<const Message> poped = safeQ.pop();
@@ -96,7 +93,7 @@ void SharePtrDeconstructionTest()
 	cout << "队列大小 " << safeQ.size();
 }
 
-void ConstructDeconstructTest()
+void constructDeconstructTest()
 {
 	ThreadSafeQueue<Message>* safeQueue = new ThreadSafeQueue<Message>(10);
 
@@ -118,10 +115,20 @@ void ConstructDeconstructTest()
 	cout << "结束" << endl;
 }
 
+void commonQueueHeaderTest()
+{
+	shared_ptr<int> sp = make_shared<int>(1000);
+	SAFE_Q_INT.push(sp);
+	shared_ptr<const int> got = SAFE_Q_INT.pop();
+	cout << *got.get() << endl;
+}
+
 int main()
 {
-	batchTest();
-	//ConstructDeconstructTest();
+	//batchTest();
+	//constructDeconstructTest();
+	sharePtrDeconstructionTest();
+	//commonQueueHeaderTest();
 
 	return 0;
 }
