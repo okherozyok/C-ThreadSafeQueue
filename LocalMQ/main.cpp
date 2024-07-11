@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <vector>
+#include <cassert>
 #include "ThreadSafeQueue.h"
 #include "localMQ.h"
 
@@ -25,6 +26,35 @@ void createQueueTest()
 	for (auto& thread : runThreads) {
 		thread.join(); // 阻塞当前线程，直到thread线程执行完毕
 	}
+}
+
+void noMessageTypeTest()
+{
+	LocalMQ<int> mq;
+	/*for (int i=0; i<100000000; i++)
+	{*/
+	shared_ptr<int> value = make_shared<int>(666);
+	auto err = mq.publish(123, value);
+	/*}*/
+	cout << err->description << endl;
+	assert(err->errCode == LocalMQ_ErrorCode::NO_MESSAGE_TYPE);
+}
+
+void queueFullTest()
+{
+	localMessageType_uint msgType = 100;
+
+	LocalMQ<int> mq;
+	localQueueHandle_uint queueId = mq.registerListen(msgType, 0);
+	shared_ptr<int> value = make_shared<int>(876);
+	auto err = mq.publish(msgType, value);
+	assert(err->errCode == LocalMQ_ErrorCode::SOME_QUEUE_FULL);
+	localQueueHandle_uint fullQueue;
+	for (auto queueHandle : err->localQueueHandles)
+	{
+		fullQueue = queueHandle;
+	}
+	assert(fullQueue == queueId);
 }
 
 void pubsubTest()
@@ -87,7 +117,9 @@ void pubsubTest()
 int main()
 {
 	//createQueueTest();
-	pubsubTest();
+	//noMessageTypeTest();
+	//pubsubTest();
+	queueFullTest();
 
 }
 

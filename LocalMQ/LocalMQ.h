@@ -8,11 +8,28 @@
 #include <set>
 #include <mutex>
 #include <shared_mutex>
+#include <string>
 #include "ThreadSafeQueue.h"
 //#include <iostream>
 
 using localMessageType_uint = uint8_t;
 using localQueueHandle_uint = uint16_t;
+
+enum class LocalMQ_ErrorCode
+{
+	RIGHT = 0,
+	NO_MESSAGE_TYPE = 100,
+	SOME_QUEUE_FULL = 200,
+};
+
+struct ErrorDescription
+{
+	LocalMQ_ErrorCode errCode;
+	std::string description;
+	std::vector<localQueueHandle_uint> localQueueHandles;
+	ErrorDescription(LocalMQ_ErrorCode code, const std::string& desc)
+		: errCode(code), description(desc) {}
+};
 
 template<typename T>
 class LocalMQ
@@ -24,7 +41,7 @@ public:
 	~LocalMQ();
 
 	localQueueHandle_uint registerListen(localMessageType_uint messageType, int size = 10);
-	void publish(localMessageType_uint messageType, std::shared_ptr<const T>);
+	std::unique_ptr<ErrorDescription> publish(localMessageType_uint messageType, std::shared_ptr<const T>);
 	std::shared_ptr<const T> subscribe(localQueueHandle_uint queueHandle);
 
 private:
@@ -61,22 +78,31 @@ localQueueHandle_uint LocalMQ<T>::registerListen(localMessageType_uint messageTy
 }
 
 template<typename T>
-void LocalMQ<T>::publish(localMessageType_uint messageType, std::shared_ptr<const T> sharedMessage)
+std::unique_ptr<ErrorDescription> LocalMQ<T>::publish(localMessageType_uint messageType, std::shared_ptr<const T> sharedMessage)
 {
 	using namespace std;
 	shared_lock<shared_mutex> rlock(rw_mutex);
 
+	auto errDes = make_unique<ErrorDescription>(LocalMQ_ErrorCode::RIGHT, "");
 	if (messageTypeMap.find(messageType) == messageTypeMap.end())
 	{
-		return;
+		errDes->errCode = LocalMQ_ErrorCode::NO_MESSAGE_TYPE;
+		errDes->description = "Can't find messageType=" + to_string(messageType);
+		return errDes;
 	}
 
 	vector<localQueueHandle_uint> queues = messageTypeMap[messageType];
 	for (localQueueHandle_uint queueHandle : queues)
 	{
 		shared_ptr<ThreadSafeQueue<T>> safeQueue = queueMap[queueHandle];
-		safeQueue->push(sharedMessage);
+		if (!safeQueue->push(sharedMessage))
+		{
+			errDes->errCode = LocalMQ_ErrorCode::SOME_QUEUE_FULL;
+			errDes->localQueueHandles.emplace_back(queueHandle);
+		}
 	}
+
+	return errDes;
 }
 
 template<typename T>
