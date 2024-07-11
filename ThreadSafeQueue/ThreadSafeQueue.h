@@ -50,10 +50,13 @@ bool ThreadSafeQueue<T>::push(std::shared_ptr<const T> value)
 	{
 		rtn = false;
 	}
+	else
+	{
+		//std::cout << "pushǰ" << value.use_count() << std::endl;
+		queue_.push(std::move(value));
+		rtn = true;
+	}
 
-	//std::cout << "pushǰ" << value.use_count() << std::endl;
-	queue_.push(std::move(value));
-	rtn = true;
 	conditionVar.notify_one();
 
 	return rtn;
