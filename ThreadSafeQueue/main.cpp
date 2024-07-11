@@ -5,6 +5,7 @@
 #include <memory> // for std::shared_ptr
 #include <thread>
 #include <vector>
+#include <cassert>
 #include "ThreadSafeQueue.h"
 #include "CommonQueueTest.h"
 
@@ -75,43 +76,58 @@ void batchTest()
 
 void sharePtrDeconstructionTest()
 {
+	ThreadSafeQueue<Message> safeQ(10);
 	{
 		shared_ptr<Message> csp = make_shared<Message>(10);
 		cout << "初始构造csp " << csp.use_count() << endl;
+		assert(1 == csp.use_count());
 		safeQ.push(csp);
 		//td.push(move(csp));
 		cout << "析构前的csp " << csp.use_count() << endl;
+		assert(2 == csp.use_count());
 	}
 
 	{
 		shared_ptr<const Message> poped = safeQ.pop();
 		cout << "最终poped " << poped.use_count() << endl;
+		assert(1 == poped.use_count());
 		cout << "读取消息值 " << poped.get()->data << endl;
 	}
 	cout << "退出所有栈" << endl;
 
 	cout << "队列大小 " << safeQ.size();
+	assert(0 == safeQ.size());
 }
 
-void constructDeconstructTest()
+void constructDeconstructTest1()
 {
 	ThreadSafeQueue<Message>* safeQueue = new ThreadSafeQueue<Message>(10);
+	{
+		shared_ptr<Message> csp = make_shared<Message>(10);
+		safeQueue->push(csp);
+	}
 
 	thread t1([safeQueue]()
 		{
-			safeQueue->pop();
-		});
-
-	thread t2([safeQueue]()
-		{
-			this_thread::sleep_for(chrono::seconds(1));
 			safeQueue->close();
+			this_thread::sleep_for(chrono::seconds(1));
 		});
 
 	t1.join();
-	t2.join();
 
 	delete safeQueue;
+	cout << "结束" << endl;
+}
+void constructDeconstructTest2()
+{
+	ThreadSafeQueue<Message>* safeQueue = new ThreadSafeQueue<Message>(10);
+	{
+		shared_ptr<Message> csp = make_shared<Message>(10);
+		safeQueue->push(csp);
+	}
+
+	delete safeQueue;
+	this_thread::sleep_for(chrono::seconds(1));
 	cout << "结束" << endl;
 }
 
@@ -121,14 +137,39 @@ void commonQueueHeaderTest()
 	SAFE_Q_INT.push(sp);
 	shared_ptr<const int> got = SAFE_Q_INT.pop();
 	cout << *got.get() << endl;
+	assert(1000 == *got.get());
+}
+
+void queueFullTest()
+{
+	using namespace std;
+	{
+		ThreadSafeQueue<int> safeQ(0);
+		shared_ptr<int> value = make_shared<int>(56);
+		assert(false == safeQ.push(value));
+	}
+	{
+		ThreadSafeQueue<int> safeQ(1);
+		shared_ptr<int> value = make_shared<int>(56);
+		assert(true == safeQ.push(value));
+	}
+	{
+		ThreadSafeQueue<int> safeQ(1);
+		shared_ptr<int> value1 = make_shared<int>(56);
+		safeQ.push(value1);
+		shared_ptr<int> value2 = make_shared<int>(56);
+		assert(false == safeQ.push(value2));
+	}
 }
 
 int main()
 {
 	//batchTest();
-	//constructDeconstructTest();
-	sharePtrDeconstructionTest();
+	//constructDeconstructTest1();
+	//constructDeconstructTest2();
+	//sharePtrDeconstructionTest();
 	//commonQueueHeaderTest();
+	queueFullTest();
 
 	return 0;
 }
