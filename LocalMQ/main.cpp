@@ -118,8 +118,8 @@ int main()
 {
 	//createQueueTest();
 	//noMessageTypeTest();
-	//pubsubTest();
-	queueFullTest();
+	pubsubTest();
+	//queueFullTest();
 
 }
 
